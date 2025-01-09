@@ -11,8 +11,6 @@ namespace net
     Session::Session(asio::ip::tcp::socket socket)
         : heartbeat_timer_(socket.get_executor()), socket_(std::move(socket))
     {
-        read_buffer_.prepare(buffer_size_);
-        write_buffer_.prepare(buffer_size_);
     }
 
     void Session::start()
@@ -47,45 +45,34 @@ namespace net
     }
 
 
-    void Session::handle_read_msg(std::size_t length)
+    void Session::handle_msg(std::size_t length)
     {
+
+        //处理read_buffer_中的length字节数据
+
         const std::string received_data(asio::buffers_begin(read_buffer_.data()),
                                         asio::buffers_end(read_buffer_.data()) - 2);
         std::cout << socket_.remote_endpoint().address().to_string() << " : " << received_data << std::endl;
-        std::string response =
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/plain\r\n"
-            "Content-Length: 12\r\n"
-            "Connection: close\r\n"
-            "\r\n"
-            "Hello,World!";
-        handle_write_msg(response);
+        // std::string response =
+        //     "HTTP/1.1 200 OK\r\n"
+        //     "Content-Type: text/plain\r\n"
+        //     "Content-Length: 12\r\n"
+        //     "Connection: close\r\n"
+        //     "\r\n"
+        //     "Hello,World!";
     }
-
-    void Session::handle_write_msg(const std::string& message)
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (message.size() > buffer_size_)
-        {
-            std::cerr << "Message too big: " << message.size() << std::endl;
-            return;
-        }
-        std::ostream os(&write_buffer_);
-        os << message;
-        do_write(message.size());
-    }//非线程安全
 
     void Session::do_read()
     {
         auto self(shared_from_this());
-        socket_.async_read_some(read_buffer_,
+        socket_.async_read_some(read_buffer_.prepare(buffer_size_),
                                 [this,self](const std::error_code& ec, const std::size_t length)
                                 {
                                     if (!ec)
                                     {
                                         reset_heartbeat();
                                         read_buffer_.commit(length);
-                                        handle_read_msg(length);
+                                        handle_msg(length);
                                         read_buffer_.consume(length);
                                         do_read();
                                     }
@@ -97,14 +84,12 @@ namespace net
                                 });
     }
 
-    void Session::do_write(const std::size_t length)
+    void Session::do_write()
     {
         auto self(shared_from_this());
-        write_buffer_.commit(asio::buffer_size(length));
-        async_write(socket_, write_buffer_,
+        async_write(socket_, write_buffer_.prepare(buffer_size_),
                     [this,self](const std::error_code& ec, const std::size_t length)
                     {
-                        std::lock_guard<std::mutex> lock(mutex_);
                         if (!ec)
                         {
                             //发送成功

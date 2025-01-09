@@ -14,12 +14,10 @@ public:
 
     void start();
     void close();
-
 private:
     void do_read();
-    void do_write(std::size_t length); //写入数据
-    void handle_read_msg(std::size_t length);
-    void handle_write_msg(const std::string& message);
+    void do_write(); //写入数据
+    void handle_msg(std::size_t length);
 
     void start_heartbeat();
     void send_heartbeat();
@@ -32,11 +30,9 @@ private:
     asio::streambuf write_buffer_;
     asio::steady_timer heartbeat_timer_;
     asio::ip::tcp::socket socket_;
-
-    std::mutex mutex_;//write_buffer_存在线程竞争，需要加锁
 private:
     int heartbeat_ = 5;
-    int buffer_size_ = 1024; //心跳间隔时间，单位：秒
+    int buffer_size_ = 1024;
 };
 
 } // net
